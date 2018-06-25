@@ -1,0 +1,258 @@
+\documentclass[a4paper,UKenglish]{lipics-v2016}
+\usepackage{amsthm}
+\usepackage{xspace}
+\usepackage{lineno}
+\linenumbers
+% \newtheorem{theorem}{Theorem}
+\newtheorem{claim}{Claim}%[theorem]
+
+\newcommand{\myboldmath}{\boldmath}
+
+\newcommand{\defn}[1]      {{\textit{\textbf{\myboldmath #1\/}}}}
+
+
+%This is a template for producing LIPIcs articles. 
+%See lipics-manual.pdf for further information.
+%for A4 paper format use option "a4paper", for US-letter use option "letterpaper"
+%for british hyphenation rules use option "UKenglish", for american hyphenation rules use option "USenglish"
+% for section-numbered lemmas etc., use "numberwithinsect"
+ 
+\usepackage{microtype}%if unwanted, comment out or use option "draft"
+
+%\graphicspath{{./graphics/}}%helpful if your graphic files are in another directory
+
+\bibliographystyle{plainurl}% the recommended bibstyle
+
+% Author macros::begin %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\title{Write Optimization, Popcorn, and Maybe Dynamic Optimality}
+%\titlerunning{A Sample LIPIcs Article} %optional, in case that the title is too long; the running title should fit into the top page column
+
+%% Please provide for each author the \author and \affil macro, even when authors have the same affiliation, i.e. for each author there needs to be the  \author and \affil macros
+\author[1]{Michael A. Bender}
+\author[2]{Guy Even}
+\author[3]{Mart\'\i{}n Farach-Colton}
+\author[4]{Przemys\l{}aw~Uzna\'nski}
+\author[5]{... hopefully Rob and Alex}
+
+
+%%%%
+\newcommand{\mab}[1]{{\sf \scriptsize \color{red} mab: #1}}
+\newcommand{\mfc}[1]{{\sf \scriptsize \color{red} mfc: #1}}
+\newcommand{\guy}[1]{{\sf \scriptsize \color{green} guy: #1}}
+\newcommand{\pu}[1]{{\sf \scriptsize \color{magenta} Przemys\l{}aw: #1}}
+\newcommand{\todo}[1]{{\sf \scriptsize \color{blue} todo: #1}}
+\newcommand{\rob}[1]{{\sf \scriptsize \color{purple} Rob: #1}}
+\newcommand{\alex}[1]{{\sf \scriptsize \color{orange} Alex: #1}}
+
+
+%\affil[1]{Dummy University Computing Laboratory, Address/City, Country\\
+%  \texttt{open@dummyuniversity.org}}
+%\affil[2]{Department of Informatics, Dummy College, Address/City, Country\\
+%  \texttt{access@dummycollege.org}}
+\authorrunning{Bender, Even, Farach-Colton, Uzna\'nski} %mandatory. First: Use abbreviated first/middle names. Second (only in severe cases): Use first author plus 'et. al.'
+
+\Copyright{Michael Bender and Guy Even and Martin Farach-Colton and Przemys\l{}aw~Uzna\'nski}%mandatory, please use full first names. LIPIcs license is "CC-BY";  http://creativecommons.org/licenses/by/3.0/
+
+
+%\subjclass{Dummy classification -- please refer to \url{http://www.acm.org/about/class/ccs98-html}}% mandatory: Please choose ACM 1998 classifications from http://www.acm.org/about/class/ccs98-html . E.g., cite as "F.1.1 Models of Computation". 
+
+%\keywords{Dummy keyword -- please provide 1--5 keywords}% mandatory: Please provide 1-5 keywords
+% Author macros::end %%%%%%%%%%%%%%%%%%%%%
+
+%Editor-only macros:: begin (do not touch as author)%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\EventEditors{John Q. Open and Joan R. Acces}
+\EventNoEds{2}
+\EventLongTitle{42nd Conference on Very Important Topics (CVIT 2016)}
+\EventShortTitle{CVIT 2016}
+\EventAcronym{CVIT}
+\EventYear{2016}
+\EventDate{December 24--27, 2016}
+\EventLocation{Little Whinging, United Kingdom}
+\EventLogo{}
+\SeriesVolume{42}
+\ArticleNo{23}
+
+% Editor-only macros::end %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\renewcommand{\path}{\textsf{path}}
+\newcommand{\leaf}{\textsf{leaf}}
+\renewcommand{\insert}{\textsf{insert}}
+\newcommand{\delete}{\textsf{delete}}
+\renewcommand{\root}{\textsf{root}}
+\newcommand{\level}{\textsf{level}}
+\newcommand{\calU}{{\cal U}}
+\newcommand{\opt}{\mbox{\sc opt}}
+\newcommand{\set}{S}
+\newcommand{\buf}[1]{W(#1)}
+\newcommand{\buffer}[1]{\buf{#1}}
+\newcommand{\tree}{T}
+
+
+\newcommand{\layer}{\textsf{layer}}
+
+\newcommand{\bet}{B$^{\varepsilon}$-tree\xspace}
+\newcommand{\bets}{B$^{\varepsilon}$-trees\xspace}
+
+\renewcommand{\epsilon}{\varepsilon}
+
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Our goal is to analyze online paging in an external memory setting
+ \end{abstract}
+
+
+\section{Problem Definition: Static Set with Search Queries}
+Let $\calU$ denote a universe with a linear order. 
+Let $\set\subseteq \calU$ denote a subset of $\calU$.
+Assume that $\set$ is stored in a search tree $\tree=(V,E)$ with the following properties:
+\begin{enumerate}
+\item Every internal node $v\in V$ has two parts:
+  \begin{itemize}
+  \item a \defn{buffer}: the buffer can store $B$ items from $\calU$, and
+  \item \defn{child pointers and pivots}: a list of $\lambda$ pointers of the form $(x,p)$, where $x\in \calU$, and 
+$p$ is a pointer to a child of $u\in V$.
+  \end{itemize}
+\item Every leaf node $v\in V$ contains a set of $B$ items.
+\end{enumerate}
+The contents of the leaves of $\tree$ are fixed. Thus, the set  $\set$ is static. 
+%(no insertions or deletions). 
+However, the contents of the buffers in internal nodes can vary.  
+
+Our goal is to manage these buffers to reduce the cost of element searches.
+
+\subparagraph*{Motivation.} This analysis is going to be subcomponent of a write-optimization technique that we call \defn{popcorning}.
+Idea: we can cache commonly queried elements in the buffers in a \bet.
+
+\subparagraph*{Online Setting.}
+We consider an online setting in which the input consists of a sequence of search requests 
+$\sigma=\{r_t\}_{t=1}^{\infty}$, where every request $r_i\in\set$. We want a popcorning algorithm that is constant-competitive with an offline optimal algorithm \opt. \mab{Need to formalize the capabilities of \opt.}
+
+\subparagraph*{Notation.} Let $\path(v)$ denote the path in the search tree from the root to $v$.
+Let $\buf{v}$ denote the set of items stored in $v$ (if $v$ is an internal vertex, then $\buf{v}$ is the contents of the buffer of $v$, if $v$ is a leaf, then $\buf{v}$ is the contents of the subset stored in $v$). 
+Let $S_{t+1}(v)$ denote the set $\buf{v}$ after the request $r_t$ is processed. 
+For an item $x\in A$, let $\leaf(x)$ denote the leaf in which $x$ is stored. 
+
+Every request $r_t$ is processed by finding the first vertex $v_t\in \path(\leaf(r_t))$ such that $r_t\in \buf{v_t}$.
+Thus the number of I/O's needed to process request $r_t$ is the length of the subpath $\path(v_t)$. 
+
+As a result of request $r_t$ both the algorithm and the optimal solution may change the contents of the buffers along the subpath $\path(v_t)$ provided that:
+\begin{align*}
+\forall v\in\path(v_t): &~ \buf{v}_{t+1} \subseteq \bigcup_{u\in\path(v_t)} \buf{u}_{t}.
+\end{align*}
+
+Our goal is to design an online algorithm for this problem with a constant competitive ratio. 
+
+\subsection{Extension to Insertions and Deletions}
+Introducing insertion and deletion requests means that the search tree $\tree$ is not fixed because the set it stores changes over time.
+Thus the problem becomes a combination of self-adjusting and caching. 
+
+We focus on write-optimized data structures in which insertion and deletion requests are "lazy". Namely, an insert request $r_t=(\insert,x)$ is served by adding $x$ to $\buf{\root}$. A delete request $r_t(\delete,x)$ is served by adding a "tombstone" $\bar{x}$ to $\buf{\root}$. 
+[One resolves a meeting between $\bar{x}$ and $x$ in $\buf{v}$ by giving precedence to the newer element. If $x$ is newer, then $\bar{x}$ is removed from $\buf{v}$. If $\bar{x}$ is newer, then $x$ is removed from $\buf{v}$. If $v$ is a leaf, then $\bar{x}$ is also removed from $\buf{v}$.]
+
+\subsection{Element Types}
+A buffer may contain the following types of elements (where $x\in \calU$):
+\begin{enumerate}
+\item $(x,original)$ - this means that this is an original copy of $x$ that is a witness for $x\in A$. It may be deleted only by a tombstone element $\bar{x}$.
+\item $(x,replica)$ - this means that this is a replica of an element $(x,original)$. We refer to such elements as replicants.
+\item $\bar{x}$ - a tombstone for $x$.
+\item Empty intervals $((x_1,x_2), empty)$ where $x_1,x_2\in A$.
+\end{enumerate}
+
+\section{Constant-Competitive Ratio for Queries}
+In this section we show that popcorning is constant optimal compared to an optimal offline popcorning algorithm. 
+In this section, we just deal with point queries.  Later on, we'll extend to insertions and finger queries. 
+
+%%%lkjlkjlkj
+\begin{claim}
+ $at-most-one-replica-per-layer-\opt_B \leq 2\cdot\opt_B$
+\end{claim}
+\begin{proof}
+Simulate $\opt$ while allowing at most replicant per layer. In each layer, the simulation keeps the replicant that survives the longest.
+\end{proof}
+\begin{claim}
+$\opt_B(queries) =\Theta(layer-inclusion-
+\opt_{2\cdot B}(queries))$
+\end{claim}
+\begin{proof}
+The proof is a based on simulating an optimal solution that uses buffers of size $B$ with a layer-inclusive solution with buffers that are slightly bigger.
+
+\end{proof}
+\begin{claim}
+Bottom-up popcorn LRU is layer inclusive.
+\end{claim}
+
+\begin{proof}
+Assume otherwise, that there is an item $x$ that is contained in a parent node $v$ but not in a corresponding child node $w$. The only way this happens is by evicting $x$ from $w$ without evicting from $v$ at particular step $t$. Since $x$ is evicted from $w$, there are $B$ newer items $x_1,x_2,\dots,x_B$ in $v$, with $x_B$ accessed at exactly time $t$. Since $v$ handles a superset of items that $w$ was handling, all items were handled by $v$. Since $x$ was not evicted from $v$, $x_1,x_2,\dots,x_B$ were not evicted as well, a contradiction since $B+1$ exceeds capacity of $v$.
+\end{proof}
+\begin{claim}
+Bottom-up popcorn LRU with buffer size $c'B$ is $O(1)$-competitive
+wrt $layer-inclusion-opt_{c\cdot B}(queries))$
+\end{claim}
+
+\begin{claim}
+move to top combined with greedy flushing is not worse than
+Bottom-up popcorn LRU 
+\end{claim}
+
+We conclude that 
+\begin{theorem}
+move to top combined with greedy flushing is with buffer size $c'cB$ is $O(1)$-competitive with $\opt_B$ with respect to queries.
+\end{theorem}
+
+\subsection{Layering}
+\begin{definition}
+The $i$'th level in a a tree $\tree$ rooted at $r$ is the set of nodes whose distance from $r$ equals $i$. 
+\end{definition}
+We denote the $i$'th level by $\level_i(\tree)$. We omit $\tree$ when it is clear from the context.
+
+\begin{definition}
+The $j$'th \emph{layer} of a rooted tree $\tree$ is defined by
+\begin{align*}
+\layer_j \triangleq \bigcup_{i\in (2^{j-1},2^j]} \level_i.
+\end{align*}
+\end{definition}
+
+\subsection{Layer Inclusive Property}
+\begin{definition}
+The buffers in a search tree satisfy the \emph{layer inclusion property} if the following two properties hold:
+\begin{enumerate}
+\item For every replicant $y$ and every layer $j$, $y$ appears at most once in $\{\buf(v)\mid v\in \layer_j\}$.
+\item For every $j\geq 1$, $\bigcup_{v\in \layer_{j-1}} \subseteq \bigcup_{v\in \layer_{j}}$. 
+\end{enumerate}
+\end{definition}
+\section{TO DO}
+\begin{enumerate}
+\item consider predecessor and successor queries
+\item consider finger bounds
+\end{enumerate}
+%%%%%%%%%%
+%%%%%%%
+%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%
+\subparagraph*{Acknowledgments.}
+We would like to thank ourselves for some illuminating discussions at early stages of the work. We would also like to thank ourselves for making ourselves aware of some of the central theorems in this paper, without which this paper would never have been written. 
+
+Finally, we would like to thank our husbands, wives, and version-2 girlfriends for supporting our travel without too much unnecessary kvetching. 
+
+% \subparagraph*{Conclusion.} 
+
+
+%\appendix
+
+
+
+%%
+%% Bibliography
+%%
+
+%% Either use bibtex (recommended), 
+
+%\bibliography{lipics-v2016-sample-article}
+
+%% .. or use the thebibliography environment explicitely
+
+
+
+\end{document}
